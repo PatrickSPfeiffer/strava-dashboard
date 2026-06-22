@@ -61,6 +61,8 @@ function handleLogin(response) {
   url.searchParams.set("scope", "activity:read_all");
   url.searchParams.set("state", state);
 
+  console.log("redirect_uri:", process.env.STRAVA_REDIRECT_URI);
+
   response.writeHead(302, { Location: url.toString() });
   response.end();
 }
