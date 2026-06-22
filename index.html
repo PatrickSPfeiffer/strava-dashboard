@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RunScope | Strava Login</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body data-page="login">
+    <main class="login-page">
+      <section class="login-card" aria-labelledby="login-title">
+        <div class="brand-mark">RS</div>
+        <p class="eyebrow">Powered by Strava</p>
+        <h1 id="login-title">RunScope</h1>
+        <p class="login-copy">
+          Analisa corridas, acompanha volume e encontra tendencias nos teus
+          treinos.
+        </p>
+        <a class="primary-button login-button" href="/api/login">
+          Connect with Strava
+        </a>
+        <p id="login-status" class="status-text">A verificar sessao...</p>
+      </section>
+    </main>
+
+    <script src="src/app.js"></script>
+  </body>
+</html>

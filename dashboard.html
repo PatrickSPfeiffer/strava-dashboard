@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RunScope | Dashboard</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body data-page="dashboard">
+    <header class="topbar">
+      <a class="topbar-brand" href="/dashboard.html" aria-label="RunScope">
+        <span class="brand-mark small">RS</span>
+        <span>RunScope</span>
+      </a>
+
+      <nav class="tabs" aria-label="Navegacao principal">
+        <button class="tab-button is-active" type="button" data-tab="analysis">
+          Análise
+        </button>
+        <button class="tab-button" type="button" data-tab="history">
+          Histórico
+        </button>
+      </nav>
+
+      <button id="logout-button" class="ghost-button" type="button">
+        Sair
+      </button>
+    </header>
+
+    <main class="dashboard-shell">
+      <section class="page-heading" aria-labelledby="dashboard-title">
+        <div>
+          <p class="eyebrow">Dashboard Strava</p>
+          <h1 id="dashboard-title">Análise de corridas</h1>
+        </div>
+        <p id="dashboard-status" class="status-text">A carregar dados...</p>
+      </section>
+
+      <section class="kpi-grid" aria-label="Resumo de corridas">
+        <article class="kpi-card">
+          <p>Total de corridas</p>
+          <strong id="kpi-total-runs">0</strong>
+        </article>
+        <article class="kpi-card">
+          <p>Distância total (km)</p>
+          <strong id="kpi-total-distance">0.0</strong>
+        </article>
+        <article class="kpi-card">
+          <p>Pace médio</p>
+          <strong id="kpi-average-pace">-</strong>
+        </article>
+        <article class="kpi-card">
+          <p>FC média</p>
+          <strong id="kpi-average-hr">-</strong>
+        </article>
+      </section>
+
+      <section id="analysis-panel" class="tab-panel is-active">
+        <div class="panel-header">
+          <div>
+            <h2>Análise</h2>
+            <p>Distância diária no período selecionado.</p>
+          </div>
+          <div class="range-selector" aria-label="Intervalo temporal">
+            <button class="range-button" type="button" data-days="7">7 dias</button>
+            <button class="range-button is-active" type="button" data-days="30">
+              30 dias
+            </button>
+            <button class="range-button" type="button" data-days="90">
+              3 meses
+            </button>
+            <button class="range-button" type="button" data-days="180">
+              6 meses
+            </button>
+            <button class="range-button" type="button" data-days="365">
+              1 ano
+            </button>
+          </div>
+        </div>
+
+        <div class="chart-panel">
+          <canvas id="distanceChart"></canvas>
+        </div>
+      </section>
+
+      <section id="history-panel" class="tab-panel" hidden>
+        <div class="panel-header">
+          <div>
+            <h2>Histórico</h2>
+            <p>Filtra e ordena todas as corridas carregadas.</p>
+          </div>
+        </div>
+
+        <form class="filters" id="history-filters">
+          <label>
+            Inicio
+            <input id="filter-start-date" type="date" />
+          </label>
+          <label>
+            Fim
+            <input id="filter-end-date" type="date" />
+          </label>
+          <label>
+            Km min.
+            <input id="filter-min-distance" type="number" min="0" step="0.1" />
+          </label>
+          <label>
+            Km max.
+            <input id="filter-max-distance" type="number" min="0" step="0.1" />
+          </label>
+          <label>
+            Pace min.
+            <input id="filter-min-pace" type="text" placeholder="4:30" />
+          </label>
+          <label>
+            Pace max.
+            <input id="filter-max-pace" type="text" placeholder="6:00" />
+          </label>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><button type="button" data-sort="date">Data</button></th>
+                <th><button type="button" data-sort="distance_km">Distância (km)</button></th>
+                <th><button type="button" data-sort="pace">Pace (min/km)</button></th>
+                <th><button type="button" data-sort="avg_hr">FC média</button></th>
+                <th><button type="button" data-sort="duration_min">Duração</button></th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="src/app.js"></script>
+  </body>
+</html>

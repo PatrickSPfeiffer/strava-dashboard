@@ -1,0 +1,10 @@
+{
+  "name": "strava-training-log",
+  "version": "1.0.0",
+  "description": "App pessoal simples para autenticar com Strava e analisar treinos.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "private": true
+}
