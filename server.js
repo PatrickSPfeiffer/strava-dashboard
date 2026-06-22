@@ -8,8 +8,6 @@ loadEnvFile();
 const PORT = Number(process.env.PORT || 3000);
 const CLIENT_ID = process.env.STRAVA_CLIENT_ID;
 const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
-const REDIRECT_URI =
-  process.env.STRAVA_REDIRECT_URI || `http://localhost:${PORT}/api/callback`;
 const PUBLIC_DIR = __dirname;
 
 const sessions = new Map();
@@ -57,7 +55,7 @@ function handleLogin(response) {
 
   const url = new URL("https://www.strava.com/oauth/authorize");
   url.searchParams.set("client_id", CLIENT_ID);
-  url.searchParams.set("redirect_uri", REDIRECT_URI);
+  url.searchParams.set("redirect_uri", process.env.STRAVA_REDIRECT_URI);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("approval_prompt", "auto");
   url.searchParams.set("scope", "activity:read_all");
@@ -237,9 +235,9 @@ function sendJson(response, statusCode, payload) {
 }
 
 function ensureConfig() {
-  if (!CLIENT_ID || !CLIENT_SECRET) {
+  if (!CLIENT_ID || !CLIENT_SECRET || !process.env.STRAVA_REDIRECT_URI) {
     throw new Error(
-      "Define STRAVA_CLIENT_ID e STRAVA_CLIENT_SECRET antes de iniciar a app.",
+      "Define STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET e STRAVA_REDIRECT_URI antes de iniciar a app.",
     );
   }
 }
