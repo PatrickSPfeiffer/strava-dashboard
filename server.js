@@ -143,8 +143,13 @@ async function handleActivities(request, response) {
   return sendJson(response, 200, data);
 }
 
-function handleLogout(request, response) {
+async function handleLogout(request, response) {
   const sessionId = getCookie(request, "strava_session");
+  const session = sessionId ? sessions.get(sessionId) : null;
+
+  if (session?.access_token) {
+    await deauthorizeStrava(session.access_token);
+  }
 
   if (sessionId) {
     sessions.delete(sessionId);
@@ -152,9 +157,29 @@ function handleLogout(request, response) {
 
   response.writeHead(302, {
     Location: "/",
-    "Set-Cookie": "strava_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
+    "Set-Cookie": [
+      "strava_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
+      "connect.sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
+    ],
   });
   response.end();
+}
+
+async function deauthorizeStrava(accessToken) {
+  const url = new URL("https://www.strava.com/oauth/deauthorize");
+  url.searchParams.set("access_token", accessToken);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      console.warn("Strava deauthorize failed:", response.status);
+    }
+  } catch (error) {
+    console.warn("Strava deauthorize failed:", error.message);
+  }
 }
 
 async function refreshSessionIfNeeded(session) {
