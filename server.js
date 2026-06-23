@@ -33,7 +33,7 @@ const server = http.createServer(async (request, response) => {
       return handleActivities(request, response);
     }
 
-    if (url.pathname === "/api/logout" && request.method === "POST") {
+    if (url.pathname === "/api/logout") {
       return handleLogout(request, response);
     }
 
@@ -150,7 +150,8 @@ function handleLogout(request, response) {
     sessions.delete(sessionId);
   }
 
-  response.writeHead(204, {
+  response.writeHead(302, {
+    Location: "/",
     "Set-Cookie": "strava_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
   });
   response.end();

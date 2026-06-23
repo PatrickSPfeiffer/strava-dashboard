@@ -61,10 +61,9 @@ async function initDashboardPage() {
 }
 
 function bindDashboardEvents() {
-  document.querySelector("#logout-button")?.addEventListener("click", async () => {
-    await fetch("/api/logout", { method: "POST" });
+  document.querySelector("#logout-button")?.addEventListener("click", () => {
     localStorage.removeItem(RUNS_KEY);
-    window.location.href = "/";
+    window.location.href = "/api/logout";
   });
 
   document.querySelectorAll(".tab-button").forEach((button) => {
