@@ -260,6 +260,8 @@ function renderHrZoneTimeChart(runs) {
 
 function renderTrainingVolume(runs) {
   const grouped = groupRunsByVolumePeriod(runs, selectedVolumePeriod);
+  const visibleGroups =
+    selectedVolumePeriod === "week" ? grouped.slice(-12) : grouped;
   const labelByPeriod = {
     week: "Km por semana",
     month: "Km por mês",
@@ -272,17 +274,24 @@ function renderTrainingVolume(runs) {
     {
       type: "bar",
       data: {
-        labels: grouped.map((item) => item.label),
+        labels: visibleGroups.map((item) =>
+          formatVolumeAxisLabel(item.label, selectedVolumePeriod),
+        ),
         datasets: [
           {
             label: labelByPeriod[selectedVolumePeriod],
-            data: grouped.map((item) => item.value),
+            data: visibleGroups.map((item) => item.value),
             backgroundColor: "#FC4C02",
             borderColor: "#FC4C02",
           },
         ],
       },
-      options: chartOptions({ beginAtZero: true }),
+      options: chartOptions({
+        beginAtZero: true,
+        xTickFontSize: 11,
+        xTickRotation: 45,
+        xMaxTicksLimit: 12,
+      }),
     },
   );
 }
@@ -500,6 +509,9 @@ function createChart(canvasId, currentChart, config) {
 function chartOptions({
   beginAtZero = false,
   indexAxis = "x",
+  xMaxTicksLimit,
+  xTickFontSize,
+  xTickRotation,
 } = {}) {
   return {
     indexAxis,
@@ -518,6 +530,12 @@ function chartOptions({
         beginAtZero: indexAxis === "y" ? beginAtZero : undefined,
         ticks: {
           color: "#a7a7a7",
+          font: {
+            size: xTickFontSize,
+          },
+          maxRotation: xTickRotation,
+          minRotation: xTickRotation,
+          maxTicksLimit: xMaxTicksLimit,
         },
         grid: {
           display: false,
@@ -667,6 +685,14 @@ function groupRunsByVolumePeriod(runs, period) {
       label,
       value: Number(value.toFixed(2)),
     }));
+}
+
+function formatVolumeAxisLabel(label, period) {
+  if (period === "week") {
+    return label.split("-").pop();
+  }
+
+  return label;
 }
 
 function getIsoWeekKey(dateValue) {

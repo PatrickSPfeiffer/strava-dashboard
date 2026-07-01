@@ -288,6 +288,13 @@ p {
   padding: 18px;
 }
 
+.volume-card {
+  display: flex;
+  flex-direction: column;
+  height: 330px;
+  padding-bottom: 12px;
+}
+
 .chart-title-row {
   display: flex;
   justify-content: space-between;
@@ -323,6 +330,12 @@ p {
 .chart-panel canvas {
   width: 100%;
   height: calc(100% - 38px);
+}
+
+.volume-card canvas {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
 
 .analytics-grid {
@@ -363,12 +376,13 @@ p {
 
 .record-list {
   display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
 .record-row {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: center;
   border: 1px solid var(--line);
@@ -501,6 +515,10 @@ td {
     grid-template-columns: 1fr;
   }
 
+  .record-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -527,6 +545,14 @@ td {
 
   .chart-panel {
     height: 300px;
+  }
+
+  .volume-card {
+    height: 310px;
+  }
+
+  .record-list {
+    grid-template-columns: 1fr;
   }
 
   .chart-title-row {
