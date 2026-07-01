@@ -4,10 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RunScope | Dashboard</title>
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet/dist/leaflet.css"
-    />
     <link rel="stylesheet" href="src/styles.css" />
   </head>
   <body data-page="dashboard">
@@ -110,7 +106,12 @@
           </article>
           <article class="analysis-card map-card">
             <h3>Localização dos Treinos</h3>
-            <div id="training-map" class="training-map"></div>
+            <div id="training-globe" class="training-globe">
+              <p id="globe-empty-message" class="globe-empty" hidden>
+                Globo indisponível. Verifica a ligação aos scripts 3D.
+              </p>
+              <div id="globe-tooltip" class="globe-tooltip" hidden></div>
+            </div>
           </article>
           <article class="analysis-card wide">
             <h3>Personal Records</h3>
@@ -188,7 +189,8 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="src/app.js"></script>
   </body>
 </html>

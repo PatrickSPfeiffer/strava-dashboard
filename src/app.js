@@ -1,9 +1,8 @@
 const RUNS_KEY = "strava_runs";
-const STRAVA_ACTIVITIES_URL =
-  "https://www.strava.com/api/v3/athlete/activities?per_page=200";
 const ASSUMED_AGE = 30;
 const HR_MAX = 220 - ASSUMED_AGE;
 const HR_ZONE_COLORS = ["#3498DB", "#2ECC71", "#F39C12", "#E74C3C", "#9B59B6"];
+const EARTH_TEXTURE_URL = "https://unpkg.com/three-globe/example/img/earth-dark.jpg";
 
 let activities = [];
 let processedRuns = [];
@@ -12,8 +11,8 @@ let selectedDays = 30;
 let selectedVolumePeriod = "week";
 let heartRateZones = createFallbackHeartRateZones();
 let charts = {};
-let trainingMap = null;
-let mapMarkers = [];
+let globe = null;
+let globeDots = [];
 let currentSort = {
   key: "date",
   direction: "desc",
@@ -132,11 +131,7 @@ async function loadActivities() {
     throw new Error("Access token Strava em falta na sessao.");
   }
 
-  const stravaActivities = await fetchJson(STRAVA_ACTIVITIES_URL, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+  const stravaActivities = await fetchJson("/api/activities");
 
   activities = stravaActivities.filter((activity) => activity.type === "Run");
   localStorage.setItem(RUNS_KEY, JSON.stringify(activities));
@@ -180,7 +175,7 @@ function renderAnalysis(runs) {
   renderRunHrZonesChart(runs);
   renderTrainingVolume(processedRuns);
   renderHrZoneTimeChart(processedRuns);
-  renderTrainingMap(processedRuns);
+  renderTrainingGlobe(processedRuns);
   renderPersonalRecords(runs);
   renderLongRuns(runs);
 }
@@ -296,30 +291,32 @@ function renderTrainingVolume(runs) {
   );
 }
 
-function renderTrainingMap(runs) {
-  if (!window.L) {
+function renderTrainingGlobe(runs) {
+  const emptyMessage = document.querySelector("#globe-empty-message");
+
+  if (!window.THREE || !window.THREE.OrbitControls) {
+    if (emptyMessage) {
+      emptyMessage.hidden = false;
+    }
     return;
   }
 
-  const mapElement = document.querySelector("#training-map");
+  const container = document.querySelector("#training-globe");
 
-  if (!mapElement) {
+  if (!container) {
     return;
   }
 
-  if (!trainingMap) {
-    trainingMap = L.map(mapElement, {
-      zoomControl: true,
-    }).setView([39.5, -8], 5);
-
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: "&copy; OpenStreetMap &copy; CARTO",
-      maxZoom: 19,
-    }).addTo(trainingMap);
+  if (emptyMessage) {
+    emptyMessage.hidden = true;
   }
 
-  mapMarkers.forEach((marker) => marker.remove());
-  mapMarkers = [];
+  if (!globe) {
+    globe = createGlobe(container);
+  }
+
+  globeDots.forEach((dot) => globe.scene.remove(dot));
+  globeDots = [];
 
   const runsWithLocation = runs.filter(
     (run) =>
@@ -329,29 +326,161 @@ function renderTrainingMap(runs) {
   );
 
   runsWithLocation.forEach((run) => {
-    const marker = L.circleMarker(run.start_latlng, {
-      radius: 7,
-      color: "#FC4C02",
-      fillColor: "#FC4C02",
-      fillOpacity: 0.75,
-      weight: 1,
-    })
-      .addTo(trainingMap)
-      .bindPopup(
-        `<strong>${escapeHtml(run.date)}</strong><br>${escapeHtml(
-          run.distance_km,
-        )} km<br>Pace: ${escapeHtml(run.pace)}`,
-      );
-
-    mapMarkers.push(marker);
+    const dot = createGlobeDot(run);
+    globe.scene.add(dot);
+    globeDots.push(dot);
   });
 
-  if (runsWithLocation.length > 0) {
-    const bounds = L.latLngBounds(runsWithLocation.map((run) => run.start_latlng));
-    trainingMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 12 });
+  requestAnimationFrame(() => {
+    resizeGlobe();
+  });
+}
+
+function createGlobe(container) {
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(
+    45,
+    container.clientWidth / container.clientHeight,
+    0.1,
+    1000,
+  );
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const tooltip = document.querySelector("#globe-tooltip");
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  container.appendChild(renderer.domElement);
+  camera.position.set(0, 0, 3.2);
+
+  const texture = new THREE.TextureLoader().load(EARTH_TEXTURE_URL);
+  const earth = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 64, 64),
+    new THREE.MeshBasicMaterial({ map: texture }),
+  );
+  scene.add(earth);
+
+  const atmosphere = new THREE.Mesh(
+    new THREE.SphereGeometry(1.01, 64, 64),
+    new THREE.MeshBasicMaterial({
+      color: "#FC4C02",
+      transparent: true,
+      opacity: 0.08,
+      wireframe: true,
+    }),
+  );
+  scene.add(atmosphere);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.35;
+  controls.enablePan = false;
+  controls.minDistance = 1.8;
+  controls.maxDistance = 6;
+
+  renderer.domElement.addEventListener("pointerdown", () => {
+    if (tooltip) {
+      tooltip.hidden = true;
+    }
+  });
+
+  renderer.domElement.addEventListener("click", (event) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+
+    const hit = raycaster.intersectObjects(globeDots, true)[0];
+
+    if (!hit || !tooltip) {
+      if (tooltip) {
+        tooltip.hidden = true;
+      }
+      return;
+    }
+
+    const run = hit.object.userData.run || hit.object.parent?.userData.run;
+
+    if (!run) {
+      tooltip.hidden = true;
+      return;
+    }
+    tooltip.innerHTML = `<strong>${escapeHtml(run.date)}</strong><br>${escapeHtml(
+      run.distance_km,
+    )} km<br>Pace: ${escapeHtml(run.pace)}`;
+    tooltip.style.left = `${event.clientX - rect.left + 12}px`;
+    tooltip.style.top = `${event.clientY - rect.top + 12}px`;
+    tooltip.hidden = false;
+  });
+
+  window.addEventListener("resize", resizeGlobe);
+
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
   }
 
-  setTimeout(() => trainingMap.invalidateSize(), 0);
+  animate();
+
+  return {
+    camera,
+    controls,
+    renderer,
+    scene,
+  };
+}
+
+function createGlobeDot(run) {
+  const [lat, lng] = run.start_latlng;
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.018, 16, 16),
+    new THREE.MeshBasicMaterial({ color: "#FC4C02" }),
+  );
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.034, 16, 16),
+    new THREE.MeshBasicMaterial({
+      color: "#FC4C02",
+      transparent: true,
+      opacity: 0.28,
+    }),
+  );
+  const group = new THREE.Group();
+  const position = latLngToVector3(lat, lng, 1.025);
+
+  dot.position.copy(position);
+  glow.position.copy(position);
+  group.add(glow);
+  group.add(dot);
+  group.userData.run = run;
+
+  return group;
+}
+
+function latLngToVector3(lat, lng, radius) {
+  const phi = (90 - lat) * (Math.PI / 180);
+  const theta = (lng + 180) * (Math.PI / 180);
+  const x = -radius * Math.sin(phi) * Math.cos(theta);
+  const y = radius * Math.cos(phi);
+  const z = radius * Math.sin(phi) * Math.sin(theta);
+
+  return new THREE.Vector3(x, y, z);
+}
+
+function resizeGlobe() {
+  const container = document.querySelector("#training-globe");
+
+  if (!globe || !container) {
+    return;
+  }
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  globe.camera.aspect = width / height;
+  globe.camera.updateProjectionMatrix();
+  globe.renderer.setSize(width, height);
 }
 
 function renderPersonalRecords(runs) {

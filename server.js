@@ -128,23 +128,41 @@ async function handleActivities(request, response) {
   }
 
   const validSession = await refreshSessionIfNeeded(session);
-  const apiResponse = await fetch(
-    "https://www.strava.com/api/v3/athlete/activities?per_page=30",
-    {
-      headers: {
-        Authorization: `Bearer ${validSession.access_token}`,
-      },
-    },
-  );
-  const data = await apiResponse.json();
+  const activities = await fetchAllStravaActivities(validSession.access_token);
 
-  if (!apiResponse.ok) {
-    return sendJson(response, apiResponse.status, {
-      error: data.message || "Nao foi possivel carregar atividades.",
+  return sendJson(response, 200, activities);
+}
+
+async function fetchAllStravaActivities(accessToken) {
+  const perPage = 200;
+  let page = 1;
+  let activities = [];
+
+  while (true) {
+    const url = new URL("https://www.strava.com/api/v3/athlete/activities");
+    url.searchParams.set("per_page", String(perPage));
+    url.searchParams.set("page", String(page));
+
+    const apiResponse = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     });
+    const data = await apiResponse.json();
+
+    if (!apiResponse.ok) {
+      throw new Error(data.message || "Nao foi possivel carregar atividades.");
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      break;
+    }
+
+    activities = activities.concat(data);
+    page += 1;
   }
 
-  return sendJson(response, 200, data);
+  return activities;
 }
 
 async function handleZones(request, response) {
