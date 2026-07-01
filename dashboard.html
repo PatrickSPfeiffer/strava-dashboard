@@ -31,23 +31,32 @@
       <section class="page-heading" aria-labelledby="dashboard-title">
         <div>
           <p class="eyebrow">Dashboard Strava</p>
-          <h1 id="dashboard-title">Análise de corridas</h1>
+          <h1 id="dashboard-title">Análise de atividades</h1>
         </div>
         <p id="dashboard-status" class="status-text">A carregar dados...</p>
       </section>
 
-      <section class="kpi-grid" aria-label="Resumo de corridas">
+      <nav class="sport-tabs" aria-label="Filtro por desporto">
+        <button class="sport-tab is-active" type="button" data-sport="Run">
+          🏃 Corrida
+        </button>
+        <button class="sport-tab" type="button" data-sport="Ride">
+          🚴 Ciclismo
+        </button>
+      </nav>
+
+      <section class="kpi-grid" aria-label="Resumo de atividades">
         <article class="kpi-card">
-          <p>Total de corridas</p>
-          <strong id="kpi-total-runs">0</strong>
+          <p id="kpi-total-label">Total de atividades</p>
+          <strong id="kpi-total-activities">0</strong>
         </article>
         <article class="kpi-card">
           <p>Distância total (km)</p>
           <strong id="kpi-total-distance">0.0</strong>
         </article>
         <article class="kpi-card">
-          <p>Pace médio</p>
-          <strong id="kpi-average-pace">-</strong>
+          <p id="kpi-pace-speed-label">Pace médio</p>
+          <strong id="kpi-average-pace-speed">-</strong>
         </article>
         <article class="kpi-card">
           <p>FC média</p>
@@ -59,7 +68,7 @@
         <div class="panel-header">
           <div>
             <h2>Análise</h2>
-            <p>Distância diária no período selecionado.</p>
+            <p id="analysis-subtitle">Métricas do desporto selecionado.</p>
           </div>
           <div class="range-selector" aria-label="Intervalo temporal">
             <button class="range-button" type="button" data-days="7">7 dias</button>
@@ -78,8 +87,65 @@
           </div>
         </div>
 
-        <div class="chart-panel">
-          <canvas id="distanceChart"></canvas>
+        <div id="running-analytics" class="analytics-grid">
+          <article class="chart-panel">
+            <h3>Evolução do Pace</h3>
+            <canvas id="runPaceChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Zonas de FC</h3>
+            <canvas id="runHrZonesChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Volume Semanal</h3>
+            <canvas id="runWeeklyVolumeChart"></canvas>
+          </article>
+          <article class="analysis-card">
+            <h3>Personal Records</h3>
+            <div id="personal-records" class="record-list"></div>
+          </article>
+          <article class="analysis-card wide">
+            <h3>Corridas Longas</h3>
+            <div class="table-wrap compact">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Distância</th>
+                    <th>Pace</th>
+                    <th>FC média</th>
+                  </tr>
+                </thead>
+                <tbody id="long-runs-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+
+        <div id="cycling-analytics" class="analytics-grid" hidden>
+          <article class="chart-panel">
+            <h3>Velocidade Média</h3>
+            <canvas id="rideSpeedChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Ganho de Elevação Semanal</h3>
+            <canvas id="rideElevationChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Distribuição por Distância</h3>
+            <canvas id="rideDistanceDistributionChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>FC Média vs Distância</h3>
+            <canvas id="rideHrDistanceChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Potência Média</h3>
+            <canvas id="ridePowerChart"></canvas>
+            <p id="power-empty-message" class="empty-note" hidden>
+              Sem dados de potência disponíveis
+            </p>
+          </article>
         </div>
       </section>
 
@@ -87,7 +153,7 @@
         <div class="panel-header">
           <div>
             <h2>Histórico</h2>
-            <p>Filtra e ordena todas as corridas carregadas.</p>
+            <p>Filtra e ordena as atividades do desporto selecionado.</p>
           </div>
         </div>
 
