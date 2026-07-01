@@ -1,4 +1,3 @@
-const ACTIVITIES_KEY = "strava_activities";
 const RUNS_KEY = "strava_runs";
 const STRAVA_ACTIVITIES_URL =
   "https://www.strava.com/api/v3/athlete/activities?per_page=200";
@@ -6,18 +5,18 @@ const ASSUMED_AGE = 30;
 const HR_MAX = 220 - ASSUMED_AGE;
 
 let activities = [];
-let processedActivities = [];
 let processedRuns = [];
 let accessToken = null;
 let selectedDays = 30;
-let selectedSport = "Run";
+let selectedVolumePeriod = "week";
 let charts = {};
+let trainingMap = null;
+let mapMarkers = [];
 let currentSort = {
   key: "date",
   direction: "desc",
 };
 
-window.processedActivities = processedActivities;
 window.processedRuns = processedRuns;
 
 const page = document.body.dataset.page;
@@ -68,23 +67,12 @@ async function initDashboardPage() {
 
 function bindDashboardEvents() {
   document.querySelector("#logout-button")?.addEventListener("click", () => {
-    localStorage.removeItem(ACTIVITIES_KEY);
     localStorage.removeItem(RUNS_KEY);
     window.location.href = "/api/logout";
   });
 
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", () => showMainTab(button.dataset.tab));
-  });
-
-  document.querySelectorAll(".sport-tab").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedSport = button.dataset.sport;
-      document
-        .querySelectorAll(".sport-tab")
-        .forEach((item) => item.classList.toggle("is-active", item === button));
-      renderDashboard();
-    });
   });
 
   document.querySelectorAll(".range-button").forEach((button) => {
@@ -94,6 +82,16 @@ function bindDashboardEvents() {
         .querySelectorAll(".range-button")
         .forEach((item) => item.classList.toggle("is-active", item === button));
       renderDashboard();
+    });
+  });
+
+  document.querySelectorAll(".volume-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedVolumePeriod = button.dataset.volume;
+      document
+        .querySelectorAll(".volume-button")
+        .forEach((item) => item.classList.toggle("is-active", item === button));
+      renderTrainingVolume(filterRunsByDays(processedRuns, selectedDays));
     });
   });
 
@@ -115,7 +113,7 @@ function bindDashboardEvents() {
 }
 
 async function loadActivities() {
-  setDashboardStatus("A carregar atividades do Strava...");
+  setDashboardStatus("A carregar corridas do Strava...");
 
   if (!accessToken) {
     throw new Error("Access token Strava em falta na sessao.");
@@ -127,18 +125,11 @@ async function loadActivities() {
     },
   });
 
-  activities = stravaActivities.filter((activity) =>
-    ["Run", "Ride"].includes(activity.type),
-  );
-  localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(activities));
-  localStorage.setItem(
-    RUNS_KEY,
-    JSON.stringify(activities.filter((activity) => activity.type === "Run")),
-  );
-  updateProcessedActivitiesFromStorage();
-  console.log("processedActivities", processedActivities);
+  activities = stravaActivities.filter((activity) => activity.type === "Run");
+  localStorage.setItem(RUNS_KEY, JSON.stringify(activities));
+  updateProcessedRunsFromStorage();
   console.log("processedRuns", processedRuns);
-  setDashboardStatus(`${processedActivities.length} atividades carregadas.`);
+  setDashboardStatus(`${processedRuns.length} corridas carregadas.`);
   renderDashboard();
 }
 
@@ -154,9 +145,9 @@ async function fetchJson(url, options = {}) {
 }
 
 function renderDashboard() {
-  const filtered = filterActivitiesByDays(getSelectedActivities(), selectedDays);
-  updateKpis(filtered);
-  renderAnalysis(filtered);
+  const filteredRuns = filterRunsByDays(processedRuns, selectedDays);
+  updateKpis(filteredRuns);
+  renderAnalysis(filteredRuns);
   renderHistory();
 }
 
@@ -172,87 +163,28 @@ function showMainTab(tabName) {
   });
 }
 
-function renderAnalysis(activitiesForSport) {
-  const isRun = selectedSport === "Run";
-
-  setText(
-    "#analysis-subtitle",
-    isRun
-      ? "Pace, zonas de FC, volume e melhores marcas."
-      : "Velocidade, elevacao, distribuicao, FC e potencia.",
-  );
-  document.querySelector("#running-analytics").hidden = !isRun;
-  document.querySelector("#cycling-analytics").hidden = isRun;
-
-  if (isRun) {
-    renderRunningAnalysis(activitiesForSport);
-  } else {
-    renderCyclingAnalysis(activitiesForSport);
-  }
-}
-
-function updateKpis(items) {
-  const totalDistance = sumDistance(items);
-  const hrItems = items.filter((item) => item.avg_hr !== null);
-  const averageHr =
-    hrItems.length === 0
-      ? null
-      : hrItems.reduce((sum, item) => sum + Number(item.avg_hr), 0) /
-        hrItems.length;
-
-  setText("#kpi-total-label", selectedSport === "Run" ? "Total de corridas" : "Total de voltas");
-  setText("#kpi-total-activities", items.length);
-  setText("#kpi-total-distance", totalDistance.toFixed(1));
-  setText("#kpi-average-hr", averageHr ? Math.round(averageHr) : "-");
-
-  if (selectedSport === "Run") {
-    const averagePace = averagePaceForRuns(items);
-    setText("#kpi-pace-speed-label", "Pace médio");
-    setText("#kpi-average-pace-speed", averagePace ? secondsToPace(averagePace) : "-");
-  } else {
-    const averageSpeed = averageSpeedForRides(items);
-    setText("#kpi-pace-speed-label", "Velocidade média");
-    setText(
-      "#kpi-average-pace-speed",
-      averageSpeed ? `${averageSpeed.toFixed(1)} km/h` : "-",
-    );
-  }
-}
-
-function renderRunningAnalysis(runs) {
-  renderRunPaceChart(runs);
+function renderAnalysis(runs) {
   renderRunHrZonesChart(runs);
-  renderRunWeeklyVolumeChart(runs);
+  renderTrainingVolume(processedRuns);
+  renderHrZoneTimeChart(processedRuns);
+  renderTrainingMap(processedRuns);
   renderPersonalRecords(runs);
   renderLongRuns(runs);
 }
 
-function renderCyclingAnalysis(rides) {
-  renderRideSpeedChart(rides);
-  renderRideElevationChart(rides);
-  renderRideDistanceDistributionChart(rides);
-  renderRideHrDistanceChart(rides);
-  renderRidePowerChart(rides);
-}
+function updateKpis(runs) {
+  const totalDistance = sumDistance(runs);
+  const averagePace = averagePaceForRuns(runs);
+  const hrRuns = runs.filter((run) => run.avg_hr !== null);
+  const averageHr =
+    hrRuns.length === 0
+      ? null
+      : hrRuns.reduce((sum, run) => sum + Number(run.avg_hr), 0) / hrRuns.length;
 
-function renderRunPaceChart(runs) {
-  const chartRuns = sortByDate(runs).filter((run) => paceToSeconds(run.pace) > 0);
-  charts.runPace = createChart("runPaceChart", charts.runPace, {
-    type: "line",
-    data: {
-      labels: chartRuns.map((run) => run.date),
-      datasets: [
-        {
-          label: "Pace (min/km)",
-          data: chartRuns.map((run) => paceToDecimalMinutes(run.pace)),
-          borderColor: "#FC4C02",
-          backgroundColor: "#FC4C02",
-          tension: 0.3,
-        },
-      ],
-    },
-    options: chartOptions({ reverseY: true }),
-  });
+  setText("#kpi-total-activities", runs.length);
+  setText("#kpi-total-distance", totalDistance.toFixed(1));
+  setText("#kpi-average-pace-speed", averagePace ? secondsToPace(averagePace) : "-");
+  setText("#kpi-average-hr", averageHr ? Math.round(averageHr) : "-");
 }
 
 function renderRunHrZonesChart(runs) {
@@ -265,20 +197,10 @@ function renderRunHrZonesChart(runs) {
   };
 
   hrRuns.forEach((run) => {
-    const ratio = Number(run.avg_hr) / HR_MAX;
-
-    if (ratio < 0.65) {
-      zones["Fácil"] += 1;
-    } else if (ratio <= 0.75) {
-      zones["Aeróbico"] += 1;
-    } else if (ratio <= 0.85) {
-      zones["Limiar"] += 1;
-    } else {
-      zones["VO2max"] += 1;
-    }
+    zones[getHrZone(run.avg_hr).shortLabel] += 1;
   });
-  const total = hrRuns.length || 1;
 
+  const total = hrRuns.length || 1;
   charts.runHrZones = createChart("runHrZonesChart", charts.runHrZones, {
     type: "doughnut",
     data: {
@@ -297,19 +219,60 @@ function renderRunHrZonesChart(runs) {
   });
 }
 
-function renderRunWeeklyVolumeChart(runs) {
-  const weekly = groupByWeek(runs, (run) => Number(run.distance_km));
+function renderHrZoneTimeChart(runs) {
+  const zoneMinutes = {
+    "Zona 1 Fácil": 0,
+    "Zona 2 Aeróbico": 0,
+    "Zona 3 Limiar": 0,
+    "Zona 4 VO2max": 0,
+  };
+
+  runs
+    .filter((run) => run.avg_hr !== null)
+    .forEach((run) => {
+      const zone = getHrZone(run.avg_hr);
+      zoneMinutes[zone.fullLabel] += Number(run.duration_min || 0);
+    });
+
+  charts.hrZoneTime = createChart("runHrZoneTimeChart", charts.hrZoneTime, {
+    type: "bar",
+    data: {
+      labels: Object.keys(zoneMinutes),
+      datasets: [
+        {
+          label: "Minutos",
+          data: Object.values(zoneMinutes).map((minutes) => Number(minutes.toFixed(0))),
+          backgroundColor: ["#3498DB", "#2ECC71", "#F39C12", "#E74C3C"],
+          borderColor: ["#3498DB", "#2ECC71", "#F39C12", "#E74C3C"],
+        },
+      ],
+    },
+    options: chartOptions({
+      beginAtZero: true,
+      indexAxis: "y",
+    }),
+  });
+}
+
+function renderTrainingVolume(runs) {
+  const grouped = groupRunsByVolumePeriod(runs, selectedVolumePeriod);
+  const labelByPeriod = {
+    week: "Km por semana",
+    month: "Km por mês",
+    year: "Km por ano",
+  };
+
   charts.runWeeklyVolume = createChart(
     "runWeeklyVolumeChart",
     charts.runWeeklyVolume,
     {
       type: "bar",
       data: {
-        labels: weekly.map((item) => item.week),
+        labels: grouped.map((item) => item.label),
         datasets: [
           {
-            label: "Km por semana",
-            data: weekly.map((item) => item.value),
+            label: labelByPeriod[selectedVolumePeriod],
+            data: grouped.map((item) => item.value),
             backgroundColor: "#FC4C02",
             borderColor: "#FC4C02",
           },
@@ -318,6 +281,64 @@ function renderRunWeeklyVolumeChart(runs) {
       options: chartOptions({ beginAtZero: true }),
     },
   );
+}
+
+function renderTrainingMap(runs) {
+  if (!window.L) {
+    return;
+  }
+
+  const mapElement = document.querySelector("#training-map");
+
+  if (!mapElement) {
+    return;
+  }
+
+  if (!trainingMap) {
+    trainingMap = L.map(mapElement, {
+      zoomControl: true,
+    }).setView([39.5, -8], 5);
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: "&copy; OpenStreetMap &copy; CARTO",
+      maxZoom: 19,
+    }).addTo(trainingMap);
+  }
+
+  mapMarkers.forEach((marker) => marker.remove());
+  mapMarkers = [];
+
+  const runsWithLocation = runs.filter(
+    (run) =>
+      Array.isArray(run.start_latlng) &&
+      run.start_latlng.length === 2 &&
+      run.start_latlng.every((value) => typeof value === "number"),
+  );
+
+  runsWithLocation.forEach((run) => {
+    const marker = L.circleMarker(run.start_latlng, {
+      radius: 7,
+      color: "#FC4C02",
+      fillColor: "#FC4C02",
+      fillOpacity: 0.75,
+      weight: 1,
+    })
+      .addTo(trainingMap)
+      .bindPopup(
+        `<strong>${escapeHtml(run.date)}</strong><br>${escapeHtml(
+          run.distance_km,
+        )} km<br>Pace: ${escapeHtml(run.pace)}`,
+      );
+
+    mapMarkers.push(marker);
+  });
+
+  if (runsWithLocation.length > 0) {
+    const bounds = L.latLngBounds(runsWithLocation.map((run) => run.start_latlng));
+    trainingMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 12 });
+  }
+
+  setTimeout(() => trainingMap.invalidateSize(), 0);
 }
 
 function renderPersonalRecords(runs) {
@@ -349,11 +370,14 @@ function renderLongRuns(runs) {
     return;
   }
 
-  const longRuns = sortByDate(runs.filter((run) => Number(run.distance_km) > 15)).reverse();
+  const longRuns = sortByDate(
+    runs.filter((run) => Number(run.distance_km) > 15),
+  ).reverse();
   tbody.innerHTML = "";
 
   if (longRuns.length === 0) {
-    tbody.innerHTML = '<tr><td class="empty-row" colspan="4">Sem corridas acima de 15 km.</td></tr>';
+    tbody.innerHTML =
+      '<tr><td class="empty-row" colspan="4">Sem corridas acima de 15 km.</td></tr>';
     return;
   }
 
@@ -369,148 +393,6 @@ function renderLongRuns(runs) {
   });
 }
 
-function renderRideSpeedChart(rides) {
-  const chartRides = sortByDate(rides).filter((ride) => ride.average_speed !== null);
-  charts.rideSpeed = createChart("rideSpeedChart", charts.rideSpeed, {
-    type: "line",
-    data: {
-      labels: chartRides.map((ride) => ride.date),
-      datasets: [
-        {
-          label: "Velocidade média (km/h)",
-          data: chartRides.map((ride) => Number((ride.average_speed * 3.6).toFixed(1))),
-          borderColor: "#3498DB",
-          backgroundColor: "#3498DB",
-          tension: 0.3,
-        },
-      ],
-    },
-    options: chartOptions(),
-  });
-}
-
-function renderRideElevationChart(rides) {
-  const weekly = groupByWeek(rides, (ride) => Number(ride.elevation_gain || 0));
-  charts.rideElevation = createChart("rideElevationChart", charts.rideElevation, {
-    type: "bar",
-    data: {
-      labels: weekly.map((item) => item.week),
-      datasets: [
-        {
-          label: "Elevação semanal (m)",
-          data: weekly.map((item) => item.value),
-          backgroundColor: "#2ECC71",
-          borderColor: "#2ECC71",
-        },
-      ],
-    },
-    options: chartOptions({ beginAtZero: true }),
-  });
-}
-
-function renderRideDistanceDistributionChart(rides) {
-  const buckets = {
-    "<20km": 0,
-    "20-50km": 0,
-    "50-100km": 0,
-    ">100km": 0,
-  };
-
-  rides.forEach((ride) => {
-    const distance = Number(ride.distance_km);
-
-    if (distance < 20) {
-      buckets["<20km"] += 1;
-    } else if (distance <= 50) {
-      buckets["20-50km"] += 1;
-    } else if (distance <= 100) {
-      buckets["50-100km"] += 1;
-    } else {
-      buckets[">100km"] += 1;
-    }
-  });
-
-  charts.rideDistribution = createChart(
-    "rideDistanceDistributionChart",
-    charts.rideDistribution,
-    {
-      type: "bar",
-      data: {
-        labels: Object.keys(buckets),
-        datasets: [
-          {
-            label: "Voltas",
-            data: Object.values(buckets),
-            backgroundColor: "#3498DB",
-            borderColor: "#3498DB",
-          },
-        ],
-      },
-      options: chartOptions({ beginAtZero: true }),
-    },
-  );
-}
-
-function renderRideHrDistanceChart(rides) {
-  const points = rides
-    .filter((ride) => ride.avg_hr !== null)
-    .map((ride) => ({
-      x: Number(ride.distance_km),
-      y: Number(ride.avg_hr),
-    }));
-
-  charts.rideHrDistance = createChart("rideHrDistanceChart", charts.rideHrDistance, {
-    type: "scatter",
-    data: {
-      datasets: [
-        {
-          label: "FC média vs distância",
-          data: points,
-          backgroundColor: "#E74C3C",
-          borderColor: "#E74C3C",
-        },
-      ],
-    },
-    options: chartOptions({ beginAtZero: false }),
-  });
-}
-
-function renderRidePowerChart(rides) {
-  const powerRides = sortByDate(rides).filter((ride) => ride.average_watts !== null);
-  const message = document.querySelector("#power-empty-message");
-  const canvas = document.querySelector("#ridePowerChart");
-
-  if (message) {
-    message.hidden = powerRides.length > 0;
-  }
-
-  if (canvas) {
-    canvas.hidden = powerRides.length === 0;
-  }
-
-  if (powerRides.length === 0) {
-    destroyChart("ridePower");
-    return;
-  }
-
-  charts.ridePower = createChart("ridePowerChart", charts.ridePower, {
-    type: "line",
-    data: {
-      labels: powerRides.map((ride) => ride.date),
-      datasets: [
-        {
-          label: "Potência média (W)",
-          data: powerRides.map((ride) => ride.average_watts),
-          borderColor: "#F1C40F",
-          backgroundColor: "#F1C40F",
-          tension: 0.3,
-        },
-      ],
-    },
-    options: chartOptions(),
-  });
-}
-
 function renderHistory() {
   const tbody = document.querySelector("#history-table-body");
 
@@ -518,29 +400,29 @@ function renderHistory() {
     return;
   }
 
-  const items = sortActivities(filterHistoryActivities(getSelectedActivities()));
+  const runs = sortRuns(filterHistoryRuns(processedRuns));
   tbody.innerHTML = "";
 
-  if (items.length === 0) {
+  if (runs.length === 0) {
     tbody.innerHTML =
-      '<tr><td class="empty-row" colspan="5">Sem atividades para os filtros selecionados.</td></tr>';
+      '<tr><td class="empty-row" colspan="5">Sem corridas para os filtros selecionados.</td></tr>';
     return;
   }
 
-  items.forEach((item) => {
+  runs.forEach((run) => {
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${escapeHtml(item.date)}</td>
-      <td>${escapeHtml(item.distance_km)}</td>
-      <td>${escapeHtml(selectedSport === "Run" ? item.pace : `${item.speed_kmh} km/h`)}</td>
-      <td>${item.avg_hr ?? "-"}</td>
-      <td>${escapeHtml(item.duration_min)} min</td>
+      <td>${escapeHtml(run.date)}</td>
+      <td>${escapeHtml(run.distance_km)}</td>
+      <td>${escapeHtml(run.pace)}</td>
+      <td>${run.avg_hr ?? "-"}</td>
+      <td>${escapeHtml(run.duration_min)} min</td>
     `;
     tbody.appendChild(row);
   });
 }
 
-function filterHistoryActivities(items) {
+function filterHistoryRuns(runs) {
   const startDate = getInputValue("#filter-start-date");
   const endDate = getInputValue("#filter-end-date");
   const minDistance = parseNumberInput("#filter-min-distance");
@@ -548,13 +430,13 @@ function filterHistoryActivities(items) {
   const minPace = paceInputToSeconds("#filter-min-pace");
   const maxPace = paceInputToSeconds("#filter-max-pace");
 
-  return items.filter((item) => {
-    const distance = Number(item.distance_km);
-    const paceSeconds = paceToSeconds(item.pace);
+  return runs.filter((run) => {
+    const distance = Number(run.distance_km);
+    const paceSeconds = paceToSeconds(run.pace);
 
     return (
-      (!startDate || item.date >= startDate) &&
-      (!endDate || item.date <= endDate) &&
+      (!startDate || run.date >= startDate) &&
+      (!endDate || run.date <= endDate) &&
       (minDistance === null || distance >= minDistance) &&
       (maxDistance === null || distance <= maxDistance) &&
       (minPace === null || paceSeconds >= minPace) &&
@@ -563,8 +445,8 @@ function filterHistoryActivities(items) {
   });
 }
 
-function sortActivities(items) {
-  return [...items].sort((first, second) => {
+function sortRuns(runs) {
+  return [...runs].sort((first, second) => {
     const firstValue = sortValue(first, currentSort.key);
     const secondValue = sortValue(second, currentSort.key);
     const direction = currentSort.direction === "asc" ? 1 : -1;
@@ -581,16 +463,16 @@ function sortActivities(items) {
   });
 }
 
-function sortValue(item, key) {
+function sortValue(run, key) {
   if (key === "pace") {
-    return paceToSeconds(item.pace);
+    return paceToSeconds(run.pace);
   }
 
   if (key === "date") {
-    return item.date;
+    return run.date;
   }
 
-  return Number(item[key] ?? -1);
+  return Number(run[key] ?? -1);
 }
 
 function createChart(canvasId, currentChart, config) {
@@ -611,15 +493,12 @@ function createChart(canvasId, currentChart, config) {
   return new Chart(canvas, config);
 }
 
-function destroyChart(key) {
-  if (charts[key]) {
-    charts[key].destroy();
-    charts[key] = null;
-  }
-}
-
-function chartOptions({ reverseY = false, beginAtZero = false } = {}) {
+function chartOptions({
+  beginAtZero = false,
+  indexAxis = "x",
+} = {}) {
   return {
+    indexAxis,
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -632,6 +511,7 @@ function chartOptions({ reverseY = false, beginAtZero = false } = {}) {
     },
     scales: {
       x: {
+        beginAtZero: indexAxis === "y" ? beginAtZero : undefined,
         ticks: {
           color: "#a7a7a7",
         },
@@ -640,8 +520,7 @@ function chartOptions({ reverseY = false, beginAtZero = false } = {}) {
         },
       },
       y: {
-        reverse: reverseY,
-        beginAtZero,
+        beginAtZero: indexAxis === "x" ? beginAtZero : undefined,
         ticks: {
           color: "#a7a7a7",
         },
@@ -653,55 +532,53 @@ function chartOptions({ reverseY = false, beginAtZero = false } = {}) {
   };
 }
 
-function getSelectedActivities() {
-  return processedActivities.filter((activity) => activity.type === selectedSport);
-}
-
-function filterActivitiesByDays(items, days) {
+function filterRunsByDays(runs, days) {
   const cutoff = new Date();
   cutoff.setHours(0, 0, 0, 0);
   cutoff.setDate(cutoff.getDate() - days + 1);
 
-  return items.filter((item) => new Date(`${item.date}T00:00:00`) >= cutoff);
+  return runs.filter((run) => new Date(`${run.date}T00:00:00`) >= cutoff);
 }
 
-function loadStoredActivities() {
-  const saved = localStorage.getItem(ACTIVITIES_KEY);
-
-  if (saved) {
-    return JSON.parse(saved);
-  }
-
+function loadStoredRuns() {
   const savedRuns = localStorage.getItem(RUNS_KEY);
   return savedRuns ? JSON.parse(savedRuns) : [];
 }
 
-function updateProcessedActivitiesFromStorage() {
-  processedActivities = processActivities(loadStoredActivities());
-  processedRuns = processedActivities.filter((activity) => activity.type === "Run");
-  window.processedActivities = processedActivities;
+function updateProcessedRunsFromStorage() {
+  processedRuns = processRuns(loadStoredRuns());
   window.processedRuns = processedRuns;
 }
 
-function processActivities(items) {
-  return items.map((item) => {
-    const distanceKm = Number(item.distance || 0) / 1000;
-    const averageSpeed = item.average_speed ?? null;
+function processRuns(runs) {
+  return runs.map((run) => ({
+    type: run.type,
+    date: (run.start_date_local || run.start_date || "").slice(0, 10),
+    distance_km: (Number(run.distance || 0) / 1000).toFixed(2),
+    pace: formatPace(run.elapsed_time, run.distance),
+    avg_hr: run.average_heartrate ?? null,
+    max_hr: run.max_heartrate ?? null,
+    duration_min: (Number(run.moving_time || 0) / 60).toFixed(0),
+    start_latlng: run.start_latlng ?? null,
+  }));
+}
 
-    return {
-      type: item.type,
-      date: (item.start_date_local || item.start_date || "").slice(0, 10),
-      distance_km: distanceKm.toFixed(2),
-      pace: formatPace(item.elapsed_time, item.distance),
-      avg_hr: item.average_heartrate ?? null,
-      max_hr: item.max_heartrate ?? null,
-      duration_min: (Number(item.moving_time || 0) / 60).toFixed(0),
-      average_speed: averageSpeed,
-      speed_kmh: averageSpeed === null ? null : Number((averageSpeed * 3.6).toFixed(1)),
-      elevation_gain: item.total_elevation_gain ?? 0,
-      average_watts: item.average_watts ?? null,
-    };
-  });
+function getHrZone(avgHr) {
+  const ratio = Number(avgHr) / HR_MAX;
+
+  if (ratio < 0.65) {
+    return { shortLabel: "Fácil", fullLabel: "Zona 1 Fácil" };
+  }
+
+  if (ratio <= 0.75) {
+    return { shortLabel: "Aeróbico", fullLabel: "Zona 2 Aeróbico" };
+  }
+
+  if (ratio <= 0.85) {
+    return { shortLabel: "Limiar", fullLabel: "Zona 3 Limiar" };
+  }
+
+  return { shortLabel: "VO2max", fullLabel: "Zona 4 VO2max" };
 }
 
 function findBestTargetRun(runs, targetKm) {
@@ -713,17 +590,22 @@ function findBestTargetRun(runs, targetKm) {
     .sort((first, second) => paceToSeconds(first.pace) - paceToSeconds(second.pace))[0];
 }
 
-function groupByWeek(items, valueGetter) {
-  const totals = items.reduce((weeks, item) => {
-    const week = getIsoWeekKey(item.date);
-    weeks.set(week, (weeks.get(week) || 0) + valueGetter(item));
-    return weeks;
+function groupRunsByVolumePeriod(runs, period) {
+  const keyGetter = {
+    week: getIsoWeekKey,
+    month: (date) => date.slice(0, 7),
+    year: (date) => date.slice(0, 4),
+  }[period];
+  const totals = runs.reduce((groups, run) => {
+    const label = keyGetter(run.date);
+    groups.set(label, (groups.get(label) || 0) + Number(run.distance_km));
+    return groups;
   }, new Map());
 
   return Array.from(totals.entries())
-    .sort(([firstWeek], [secondWeek]) => firstWeek.localeCompare(secondWeek))
-    .map(([week, value]) => ({
-      week,
+    .sort(([first], [second]) => first.localeCompare(second))
+    .map(([label, value]) => ({
+      label,
       value: Number(value.toFixed(2)),
     }));
 }
@@ -738,8 +620,8 @@ function getIsoWeekKey(dateValue) {
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
-function sortByDate(items) {
-  return [...items].sort((first, second) => first.date.localeCompare(second.date));
+function sortByDate(runs) {
+  return [...runs].sort((first, second) => first.date.localeCompare(second.date));
 }
 
 function averagePaceForRuns(runs) {
@@ -755,21 +637,8 @@ function averagePaceForRuns(runs) {
   );
 }
 
-function averageSpeedForRides(rides) {
-  const validRides = rides.filter((ride) => ride.speed_kmh !== null);
-
-  if (validRides.length === 0) {
-    return null;
-  }
-
-  return (
-    validRides.reduce((sum, ride) => sum + Number(ride.speed_kmh), 0) /
-    validRides.length
-  );
-}
-
-function sumDistance(items) {
-  return items.reduce((sum, item) => sum + Number(item.distance_km || 0), 0);
+function sumDistance(runs) {
+  return runs.reduce((sum, run) => sum + Number(run.distance_km || 0), 0);
 }
 
 function formatPace(elapsedTime, distance) {
@@ -781,11 +650,6 @@ function formatPace(elapsedTime, distance) {
 
   const paceSeconds = Math.round((Number(elapsedTime || 0) / meters) * 1000);
   return secondsToPace(paceSeconds);
-}
-
-function paceToDecimalMinutes(pace) {
-  const [minutes = 0, seconds = 0] = String(pace).split(":").map(Number);
-  return Number((minutes + seconds / 60).toFixed(2));
 }
 
 function paceInputToSeconds(selector) {

@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RunScope | Dashboard</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet/dist/leaflet.css"
+    />
     <link rel="stylesheet" href="src/styles.css" />
   </head>
   <body data-page="dashboard">
@@ -31,23 +35,14 @@
       <section class="page-heading" aria-labelledby="dashboard-title">
         <div>
           <p class="eyebrow">Dashboard Strava</p>
-          <h1 id="dashboard-title">Análise de atividades</h1>
+          <h1 id="dashboard-title">Análise de corridas</h1>
         </div>
         <p id="dashboard-status" class="status-text">A carregar dados...</p>
       </section>
 
-      <nav class="sport-tabs" aria-label="Filtro por desporto">
-        <button class="sport-tab is-active" type="button" data-sport="Run">
-          🏃 Corrida
-        </button>
-        <button class="sport-tab" type="button" data-sport="Ride">
-          🚴 Ciclismo
-        </button>
-      </nav>
-
-      <section class="kpi-grid" aria-label="Resumo de atividades">
+      <section class="kpi-grid" aria-label="Resumo de corridas">
         <article class="kpi-card">
-          <p id="kpi-total-label">Total de atividades</p>
+          <p>Total de corridas</p>
           <strong id="kpi-total-activities">0</strong>
         </article>
         <article class="kpi-card">
@@ -55,7 +50,7 @@
           <strong id="kpi-total-distance">0.0</strong>
         </article>
         <article class="kpi-card">
-          <p id="kpi-pace-speed-label">Pace médio</p>
+          <p>Pace médio</p>
           <strong id="kpi-average-pace-speed">-</strong>
         </article>
         <article class="kpi-card">
@@ -68,7 +63,7 @@
         <div class="panel-header">
           <div>
             <h2>Análise</h2>
-            <p id="analysis-subtitle">Métricas do desporto selecionado.</p>
+            <p id="analysis-subtitle">Zonas, volume, localização e melhores marcas.</p>
           </div>
           <div class="range-selector" aria-label="Intervalo temporal">
             <button class="range-button" type="button" data-days="7">7 dias</button>
@@ -89,16 +84,33 @@
 
         <div id="running-analytics" class="analytics-grid">
           <article class="chart-panel">
-            <h3>Evolução do Pace</h3>
-            <canvas id="runPaceChart"></canvas>
-          </article>
-          <article class="chart-panel">
             <h3>Zonas de FC</h3>
             <canvas id="runHrZonesChart"></canvas>
           </article>
           <article class="chart-panel">
-            <h3>Volume Semanal</h3>
+            <div class="chart-title-row">
+              <h3>Volume de Treino</h3>
+              <div class="volume-toggle" aria-label="Agrupar volume">
+                <button class="volume-button is-active" type="button" data-volume="week">
+                  Semana
+                </button>
+                <button class="volume-button" type="button" data-volume="month">
+                  Mês
+                </button>
+                <button class="volume-button" type="button" data-volume="year">
+                  Ano
+                </button>
+              </div>
+            </div>
             <canvas id="runWeeklyVolumeChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Tempo nas Zonas Cardíacas</h3>
+            <canvas id="runHrZoneTimeChart"></canvas>
+          </article>
+          <article class="analysis-card map-card">
+            <h3>Localização dos Treinos</h3>
+            <div id="training-map" class="training-map"></div>
           </article>
           <article class="analysis-card">
             <h3>Personal Records</h3>
@@ -121,39 +133,13 @@
             </div>
           </article>
         </div>
-
-        <div id="cycling-analytics" class="analytics-grid" hidden>
-          <article class="chart-panel">
-            <h3>Velocidade Média</h3>
-            <canvas id="rideSpeedChart"></canvas>
-          </article>
-          <article class="chart-panel">
-            <h3>Ganho de Elevação Semanal</h3>
-            <canvas id="rideElevationChart"></canvas>
-          </article>
-          <article class="chart-panel">
-            <h3>Distribuição por Distância</h3>
-            <canvas id="rideDistanceDistributionChart"></canvas>
-          </article>
-          <article class="chart-panel">
-            <h3>FC Média vs Distância</h3>
-            <canvas id="rideHrDistanceChart"></canvas>
-          </article>
-          <article class="chart-panel">
-            <h3>Potência Média</h3>
-            <canvas id="ridePowerChart"></canvas>
-            <p id="power-empty-message" class="empty-note" hidden>
-              Sem dados de potência disponíveis
-            </p>
-          </article>
-        </div>
       </section>
 
       <section id="history-panel" class="tab-panel" hidden>
         <div class="panel-header">
           <div>
             <h2>Histórico</h2>
-            <p>Filtra e ordena as atividades do desporto selecionado.</p>
+            <p>Filtra e ordena todas as corridas carregadas.</p>
           </div>
         </div>
 
@@ -202,6 +188,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="src/app.js"></script>
   </body>
 </html>
