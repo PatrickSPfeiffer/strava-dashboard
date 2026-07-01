@@ -2,7 +2,6 @@ const RUNS_KEY = "strava_runs";
 const ASSUMED_AGE = 30;
 const HR_MAX = 220 - ASSUMED_AGE;
 const HR_ZONE_COLORS = ["#3498DB", "#2ECC71", "#F39C12", "#E74C3C", "#9B59B6"];
-const EARTH_TEXTURE_URL = "https://unpkg.com/three-globe/example/img/earth-dark.jpg";
 
 let activities = [];
 let processedRuns = [];
@@ -12,7 +11,6 @@ let selectedVolumePeriod = "week";
 let heartRateZones = createFallbackHeartRateZones();
 let charts = {};
 let globe = null;
-let globeDots = [];
 let currentSort = {
   key: "date",
   direction: "desc",
@@ -292,195 +290,163 @@ function renderTrainingVolume(runs) {
 }
 
 function renderTrainingGlobe(runs) {
-  const emptyMessage = document.querySelector("#globe-empty-message");
-
-  if (!window.THREE || !window.THREE.OrbitControls) {
-    if (emptyMessage) {
-      emptyMessage.hidden = false;
-    }
-    return;
-  }
-
   const container = document.querySelector("#training-globe");
 
   if (!container) {
     return;
   }
 
-  if (emptyMessage) {
-    emptyMessage.hidden = true;
+  container.style.minHeight = "420px";
+
+  if (!window.THREE) {
+    container.textContent = "Globo indisponível. Verifica a ligação aos scripts 3D.";
+    return;
   }
 
   if (!globe) {
-    globe = createGlobe(container);
+    globe = createTrainingGlobe(container);
   }
 
-  globeDots.forEach((dot) => globe.scene.remove(dot));
-  globeDots = [];
-
-  const runsWithLocation = runs.filter(
-    (run) =>
-      Array.isArray(run.start_latlng) &&
-      run.start_latlng.length === 2 &&
-      run.start_latlng.every((value) => typeof value === "number"),
-  );
-
-  runsWithLocation.forEach((run) => {
-    const dot = createGlobeDot(run);
-    globe.scene.add(dot);
-    globeDots.push(dot);
-  });
-
-  requestAnimationFrame(() => {
-    resizeGlobe();
-  });
+  updateTrainingGlobePoints(globe, getGlobePoints(runs));
+  resizeTrainingGlobe(globe, container);
 }
 
-function createGlobe(container) {
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(
-    45,
-    container.clientWidth / container.clientHeight,
-    0.1,
-    1000,
-  );
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  const raycaster = new THREE.Raycaster();
-  const pointer = new THREE.Vector2();
-  const tooltip = document.querySelector("#globe-tooltip");
+function getGlobePoints(runs) {
+  return runs
+    .filter(
+      (run) =>
+        Array.isArray(run.start_latlng) &&
+        run.start_latlng.length === 2 &&
+        run.start_latlng.every((value) => typeof value === "number"),
+    )
+    .map((run) => ({
+      lat: run.start_latlng[0],
+      lng: run.start_latlng[1],
+      date: run.date,
+      distance: run.distance_km,
+      pace: run.pace,
+    }));
+}
 
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(container.clientWidth, container.clientHeight);
+function createTrainingGlobe(container) {
+  container.textContent = "";
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const earthGroup = new THREE.Group();
+  const pointsGroup = new THREE.Group();
+
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setClearColor(0x121212, 1);
   container.appendChild(renderer.domElement);
+
   camera.position.set(0, 0, 3.2);
 
-  const texture = new THREE.TextureLoader().load(EARTH_TEXTURE_URL);
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(1, 64, 64),
-    new THREE.MeshBasicMaterial({ map: texture }),
+    new THREE.MeshStandardMaterial({
+      color: 0x1f5f85,
+      emissive: 0x06131c,
+      roughness: 0.72,
+      metalness: 0.08,
+    }),
   );
-  scene.add(earth);
 
-  const atmosphere = new THREE.Mesh(
-    new THREE.SphereGeometry(1.01, 64, 64),
+  const wireframe = new THREE.Mesh(
+    new THREE.SphereGeometry(1.006, 32, 32),
     new THREE.MeshBasicMaterial({
-      color: "#FC4C02",
+      color: 0x4aa3c7,
       transparent: true,
-      opacity: 0.08,
+      opacity: 0.13,
       wireframe: true,
     }),
   );
-  scene.add(atmosphere);
 
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.35;
-  controls.enablePan = false;
-  controls.minDistance = 1.8;
-  controls.maxDistance = 6;
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.95);
+  directionalLight.position.set(3, 2, 4);
 
-  renderer.domElement.addEventListener("pointerdown", () => {
-    if (tooltip) {
-      tooltip.hidden = true;
-    }
-  });
+  earthGroup.add(earth);
+  earthGroup.add(wireframe);
+  earthGroup.add(pointsGroup);
+  scene.add(ambientLight);
+  scene.add(directionalLight);
+  scene.add(earthGroup);
 
-  renderer.domElement.addEventListener("click", (event) => {
-    const rect = renderer.domElement.getBoundingClientRect();
-    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(pointer, camera);
+  const nextGlobe = {
+    camera,
+    earthGroup,
+    pointsGroup,
+    renderer,
+    scene,
+  };
 
-    const hit = raycaster.intersectObjects(globeDots, true)[0];
-
-    if (!hit || !tooltip) {
-      if (tooltip) {
-        tooltip.hidden = true;
-      }
-      return;
-    }
-
-    const run = hit.object.userData.run || hit.object.parent?.userData.run;
-
-    if (!run) {
-      tooltip.hidden = true;
-      return;
-    }
-    tooltip.innerHTML = `<strong>${escapeHtml(run.date)}</strong><br>${escapeHtml(
-      run.distance_km,
-    )} km<br>Pace: ${escapeHtml(run.pace)}`;
-    tooltip.style.left = `${event.clientX - rect.left + 12}px`;
-    tooltip.style.top = `${event.clientY - rect.top + 12}px`;
-    tooltip.hidden = false;
-  });
-
-  window.addEventListener("resize", resizeGlobe);
+  window.addEventListener("resize", () => resizeTrainingGlobe(nextGlobe, container));
+  resizeTrainingGlobe(nextGlobe, container);
 
   function animate() {
-    requestAnimationFrame(animate);
-    controls.update();
+    nextGlobe.animationFrame = requestAnimationFrame(animate);
+    scene.rotation.y += 0.0025;
     renderer.render(scene, camera);
   }
 
   animate();
 
-  return {
-    camera,
-    controls,
-    renderer,
-    scene,
-  };
+  return nextGlobe;
 }
 
-function createGlobeDot(run) {
-  const [lat, lng] = run.start_latlng;
+function updateTrainingGlobePoints(currentGlobe, points) {
+  currentGlobe.pointsGroup.clear();
+
+  points.forEach((point) => {
+    const marker = createTrainingPoint(point);
+    currentGlobe.pointsGroup.add(marker);
+  });
+}
+
+function createTrainingPoint(point) {
+  const marker = new THREE.Group();
+  const position = latLngToVector3(point.lat, point.lng, 1.035);
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.018, 16, 16),
-    new THREE.MeshBasicMaterial({ color: "#FC4C02" }),
+    new THREE.SphereGeometry(0.022, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xfc4c02 }),
   );
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(0.034, 16, 16),
+    new THREE.SphereGeometry(0.05, 16, 16),
     new THREE.MeshBasicMaterial({
-      color: "#FC4C02",
+      color: 0xfc4c02,
       transparent: true,
-      opacity: 0.28,
+      opacity: 0.22,
     }),
   );
-  const group = new THREE.Group();
-  const position = latLngToVector3(lat, lng, 1.025);
 
-  dot.position.copy(position);
-  glow.position.copy(position);
-  group.add(glow);
-  group.add(dot);
-  group.userData.run = run;
+  marker.position.copy(position);
+  marker.add(glow);
+  marker.add(dot);
+  marker.userData = point;
 
-  return group;
+  return marker;
 }
 
 function latLngToVector3(lat, lng, radius) {
   const phi = (90 - lat) * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
-  const x = -radius * Math.sin(phi) * Math.cos(theta);
-  const y = radius * Math.cos(phi);
-  const z = radius * Math.sin(phi) * Math.sin(theta);
 
-  return new THREE.Vector3(x, y, z);
+  return new THREE.Vector3(
+    -radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.sin(theta),
+  );
 }
 
-function resizeGlobe() {
-  const container = document.querySelector("#training-globe");
+function resizeTrainingGlobe(currentGlobe, container) {
+  const width = container.clientWidth || 1;
+  const height = container.clientHeight || 420;
 
-  if (!globe || !container) {
-    return;
-  }
-
-  const width = container.clientWidth;
-  const height = container.clientHeight;
-  globe.camera.aspect = width / height;
-  globe.camera.updateProjectionMatrix();
-  globe.renderer.setSize(width, height);
+  currentGlobe.camera.aspect = width / height;
+  currentGlobe.camera.updateProjectionMatrix();
+  currentGlobe.renderer.setSize(width, height, false);
 }
 
 function renderPersonalRecords(runs) {
