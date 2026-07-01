@@ -33,6 +33,10 @@ const server = http.createServer(async (request, response) => {
       return handleActivities(request, response);
     }
 
+    if (url.pathname === "/api/zones" && request.method === "GET") {
+      return handleZones(request, response);
+    }
+
     if (url.pathname === "/api/logout") {
       return handleLogout(request, response);
     }
@@ -137,6 +141,30 @@ async function handleActivities(request, response) {
   if (!apiResponse.ok) {
     return sendJson(response, apiResponse.status, {
       error: data.message || "Nao foi possivel carregar atividades.",
+    });
+  }
+
+  return sendJson(response, 200, data);
+}
+
+async function handleZones(request, response) {
+  const session = getSession(request);
+
+  if (!session) {
+    return sendJson(response, 401, { error: "Sessao Strava em falta." });
+  }
+
+  const validSession = await refreshSessionIfNeeded(session);
+  const apiResponse = await fetch("https://www.strava.com/api/v3/athlete/zones", {
+    headers: {
+      Authorization: `Bearer ${validSession.access_token}`,
+    },
+  });
+  const data = await apiResponse.json();
+
+  if (!apiResponse.ok) {
+    return sendJson(response, apiResponse.status, {
+      error: data.message || "Nao foi possivel carregar zonas de FC.",
     });
   }
 

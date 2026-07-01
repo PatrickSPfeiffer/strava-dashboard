@@ -3,12 +3,14 @@ const STRAVA_ACTIVITIES_URL =
   "https://www.strava.com/api/v3/athlete/activities?per_page=200";
 const ASSUMED_AGE = 30;
 const HR_MAX = 220 - ASSUMED_AGE;
+const HR_ZONE_COLORS = ["#3498DB", "#2ECC71", "#F39C12", "#E74C3C", "#9B59B6"];
 
 let activities = [];
 let processedRuns = [];
 let accessToken = null;
 let selectedDays = 30;
 let selectedVolumePeriod = "week";
+let heartRateZones = createFallbackHeartRateZones();
 let charts = {};
 let trainingMap = null;
 let mapMarkers = [];
@@ -59,6 +61,7 @@ async function initDashboardPage() {
     }
 
     accessToken = session.accessToken;
+    await loadHeartRateZones();
     await loadActivities();
   } catch (error) {
     setDashboardStatus(error.message);
@@ -110,6 +113,16 @@ function bindDashboardEvents() {
       renderHistory();
     });
   });
+}
+
+async function loadHeartRateZones() {
+  try {
+    const zones = await fetchJson("/api/zones");
+    heartRateZones = normalizeHeartRateZones(zones);
+  } catch (error) {
+    console.warn("A usar zonas de FC padrão:", error.message);
+    heartRateZones = createFallbackHeartRateZones();
+  }
 }
 
 async function loadActivities() {
@@ -189,28 +202,24 @@ function updateKpis(runs) {
 
 function renderRunHrZonesChart(runs) {
   const hrRuns = runs.filter((run) => run.avg_hr !== null);
-  const zones = {
-    "Fácil": 0,
-    "Aeróbico": 0,
-    "Limiar": 0,
-    "VO2max": 0,
-  };
+  const zoneCounts = createZoneTotals(0);
 
   hrRuns.forEach((run) => {
-    zones[getHrZone(run.avg_hr).shortLabel] += 1;
+    const zone = getHrZone(run.avg_hr);
+    zoneCounts[zone.label] += 1;
   });
 
   const total = hrRuns.length || 1;
   charts.runHrZones = createChart("runHrZonesChart", charts.runHrZones, {
     type: "doughnut",
     data: {
-      labels: Object.keys(zones),
+      labels: Object.keys(zoneCounts),
       datasets: [
         {
-          data: Object.values(zones).map((count) =>
+          data: Object.values(zoneCounts).map((count) =>
             Number(((count / total) * 100).toFixed(1)),
           ),
-          backgroundColor: ["#2ECC71", "#F1C40F", "#F39C12", "#E74C3C"],
+          backgroundColor: getZoneColors(),
           borderColor: "#1E1E1E",
         },
       ],
@@ -220,18 +229,13 @@ function renderRunHrZonesChart(runs) {
 }
 
 function renderHrZoneTimeChart(runs) {
-  const zoneMinutes = {
-    "Zona 1 Fácil": 0,
-    "Zona 2 Aeróbico": 0,
-    "Zona 3 Limiar": 0,
-    "Zona 4 VO2max": 0,
-  };
+  const zoneMinutes = createZoneTotals(0);
 
   runs
     .filter((run) => run.avg_hr !== null)
     .forEach((run) => {
       const zone = getHrZone(run.avg_hr);
-      zoneMinutes[zone.fullLabel] += Number(run.duration_min || 0);
+      zoneMinutes[zone.label] += Number(run.duration_min || 0);
     });
 
   charts.hrZoneTime = createChart("runHrZoneTimeChart", charts.hrZoneTime, {
@@ -242,8 +246,8 @@ function renderHrZoneTimeChart(runs) {
         {
           label: "Minutos",
           data: Object.values(zoneMinutes).map((minutes) => Number(minutes.toFixed(0))),
-          backgroundColor: ["#3498DB", "#2ECC71", "#F39C12", "#E74C3C"],
-          borderColor: ["#3498DB", "#2ECC71", "#F39C12", "#E74C3C"],
+          backgroundColor: getZoneColors(),
+          borderColor: getZoneColors(),
         },
       ],
     },
@@ -563,22 +567,77 @@ function processRuns(runs) {
   }));
 }
 
+function normalizeHeartRateZones(zonesResponse) {
+  const heartRate = zonesResponse?.heart_rate;
+  const zones = heartRate?.zones;
+
+  if (heartRate?.custom_zones === false || !Array.isArray(zones) || zones.length === 0) {
+    return createFallbackHeartRateZones();
+  }
+
+  const normalized = zones
+    .map((zone, index) => ({
+      index: index + 1,
+      min: Number(zone.min ?? 0),
+      max:
+        zone.max === null || zone.max === undefined || Number(zone.max) < 0
+          ? null
+          : Number(zone.max),
+    }))
+    .filter((zone) => Number.isFinite(zone.min));
+
+  return normalized.length > 0
+    ? normalized.map((zone) => ({
+        ...zone,
+        label: formatZoneLabel(zone),
+      }))
+    : createFallbackHeartRateZones();
+}
+
+function createFallbackHeartRateZones() {
+  const zones = [
+    { index: 1, min: 0, max: 115, fallbackLabel: "Zona 1 (<115 bpm)" },
+    { index: 2, min: 115, max: 152, fallbackLabel: "Zona 2 (115-152 bpm)" },
+    { index: 3, min: 152, max: 171, fallbackLabel: "Zona 3 (152-171 bpm)" },
+    { index: 4, min: 171, max: null, fallbackLabel: "Zona 4 (>171 bpm)" },
+  ];
+
+  return zones.map((zone) => ({
+    ...zone,
+    label: zone.fallbackLabel,
+  }));
+}
+
+function formatZoneLabel(zone) {
+  if (zone.max === null) {
+    return `Zona ${zone.index} (>${zone.min} bpm)`;
+  }
+
+  return `Zona ${zone.index} (${zone.min}-${zone.max} bpm)`;
+}
+
+function createZoneTotals(initialValue) {
+  return heartRateZones.reduce((totals, zone) => {
+    totals[zone.label] = initialValue;
+    return totals;
+  }, {});
+}
+
+function getZoneColors() {
+  return heartRateZones.map(
+    (_zone, index) => HR_ZONE_COLORS[index % HR_ZONE_COLORS.length],
+  );
+}
+
 function getHrZone(avgHr) {
-  const ratio = Number(avgHr) / HR_MAX;
+  const heartRate = Number(avgHr);
 
-  if (ratio < 0.65) {
-    return { shortLabel: "Fácil", fullLabel: "Zona 1 Fácil" };
-  }
-
-  if (ratio <= 0.75) {
-    return { shortLabel: "Aeróbico", fullLabel: "Zona 2 Aeróbico" };
-  }
-
-  if (ratio <= 0.85) {
-    return { shortLabel: "Limiar", fullLabel: "Zona 3 Limiar" };
-  }
-
-  return { shortLabel: "VO2max", fullLabel: "Zona 4 VO2max" };
+  return (
+    heartRateZones.find(
+      (zone) =>
+        heartRate >= zone.min && (zone.max === null || heartRate < zone.max),
+    ) || heartRateZones[heartRateZones.length - 1]
+  );
 }
 
 function findBestTargetRun(runs, targetKm) {
